@@ -8,6 +8,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -23,7 +24,9 @@ jobs:
           java-version: '17'
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
 
       - name: Install Android SDK
         run: |
@@ -37,7 +40,13 @@ jobs:
 
       - name: Find project
         run: |
-          SETTINGS=$(find project -name settings.gradle.kts -o -name settings.gradle | head -n 1)
+          SETTINGS=$(find project -name settings.gradle.kts -type f | head -1)
+
+          if [ -z "$SETTINGS" ]; then
+            echo "settings.gradle.kts not found"
+            exit 1
+          fi
+
           echo "SETTINGS=$SETTINGS"
           echo "PROJECT_DIR=$(dirname "$SETTINGS")" >> $GITHUB_ENV
 
@@ -50,4 +59,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: SHIT-MART-APK
-          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
