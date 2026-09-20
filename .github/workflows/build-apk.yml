@@ -22,15 +22,6 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Fix JVM target
-        run: |
-          cd project
-
-          find . \( -name "build.gradle" -o -name "build.gradle.kts" \) -print0 | xargs -0 sed -i \
-            -e 's/JavaVersion.VERSION_1_8/JavaVersion.VERSION_17/g' \
-            -e 's/jvmTarget[[:space:]]*=[[:space:]]*"1.8"/jvmTarget = "17"/g' \
-            -e "s/jvmTarget[[:space:]]*=[[:space:]]*'1.8'/jvmTarget = '17'/g"
-
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
         with:
@@ -46,12 +37,36 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Force JVM 17
+        run: |
+          cd project
+
+          cat > force-jvm.gradle <<'EOF'
+          allprojects {
+              afterEvaluate {
+                  tasks.withType(JavaCompile).configureEach {
+                      sourceCompatibility = "17"
+                      targetCompatibility = "17"
+                  }
+
+                  tasks.configureEach {
+                      if (name.toLowerCase().contains("kotlinc")) {
+                          try {
+                              kotlinOptions.jvmTarget = "17"
+                          } catch (Exception ignored) {
+                          }
+                      }
+                  }
+              }
+          }
+          EOF
+
       - name: Find project
         run: |
           SETTINGS=$(find project -name settings.gradle -o -name settings.gradle.kts | head -n 1)
 
           if [ -z "$SETTINGS" ]; then
-            echo "settings.gradle.kts not found"
+            echo "settings.gradle or settings.gradle.kts not found"
             exit 1
           fi
 
@@ -61,7 +76,7 @@ jobs:
       - name: Build APK
         run: |
           cd "$PROJECT_DIR"
-          gradle assembleDebug
+          gradle --init-script ../force-jvm.gradle assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
