@@ -8,7 +8,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -22,19 +21,56 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-          - name: Fix JVM target
-          run: |
-            cd project
-            find . \( -name 
-            "build.gradle" -o -name 
-            "build.gradle.kts" \) -print0 | xargs 
-            -0 sed -i \
-              -e 's/
-              JavaVersion.VERSION_1_8/
-              JavaVersion.VERSION_17/g' \
-              -e 's/jvmTarget *= 
-              *["'\'']1.8["'\'']/jvmTarget = "17"/
-              g'
+
+      - name: Fix JVM target
+        run: |
+          cd project
+
+          python3 - <<'PY'
+          import os
+          import re
+
+          for root, dirs, files in os.walk("."):
+              for file in files:
+                  if file in ("build.gradle", "build.gradle.kts"):
+                      path = os.path.join(root, file)
+
+                      with open(path, "r", encoding="utf-8") as f:
+                          text = f.read()
+
+                      text = text.replace(
+                          "JavaVersion.VERSION_1_8",
+                          "JavaVersion.VERSION_17"
+                      )
+
+                      text = text.replace(
+                          "JvmTarget.JVM_1_8",
+                          "JvmTarget.JVM_17"
+                      )
+
+                      text = re.sub(
+                          r'jvmTarget\s*=\s*["\']1\.8["\']',
+                          'jvmTarget = "17"',
+                          text
+                      )
+
+                      text = re.sub(
+                          r'sourceCompatibility\s*=\s*JavaVersion\.VERSION_1_8',
+                          'sourceCompatibility = JavaVersion.VERSION_17',
+                          text
+                      )
+
+                      text = re.sub(
+                          r'targetCompatibility\s*=\s*JavaVersion\.VERSION_1_8',
+                          'targetCompatibility = JavaVersion.VERSION_17',
+                          text
+                      )
+
+                      with open(path, "w", encoding="utf-8") as f:
+                          f.write(text)
+
+                      print("Fixed:", path)
+          PY
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
@@ -53,15 +89,16 @@ jobs:
 
       - name: Find project
         run: |
-          SETTINGS=$(find project -name settings.gradle.kts -type f | head -1)
+          SETTINGS=$(find project -name settings.gradle.kts -o -name settings.gradle | head -n 1)
 
           if [ -z "$SETTINGS" ]; then
-            echo "settings.gradle.kts not found"
+            echo "settings.gradle or settings.gradle.kts not found"
             exit 1
           fi
 
           echo "SETTINGS=$SETTINGS"
-          echo "PROJECT_DIR=$(dirname "$SETTINGS")" >> $GITHUB_ENV
+          PROJECT_DIR=$(dirname "$SETTINGS")
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Build APK
         run: |
