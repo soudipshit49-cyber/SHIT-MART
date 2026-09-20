@@ -23,63 +23,58 @@ jobs:
           java-version: '17'
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          packages: 'platform-tools'
-
-      - name: Install Android SDK
-        run: |
-          yes | sdkmanager --licenses || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+        uses: android-actions/setup-android@v3
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
 
-      - name: Force JVM 17
+      - name: Find project
+        id: find-project
         run: |
-          cd project
+          PROJECT_DIR=$(find "$GITHUB_WORKSPACE/project" -name settings.gradle -o -name settings.gradle.kts | head -n 1 | xargs -r dirname)
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "Gradle project not found"
+            exit 1
+          fi
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Found project: $PROJECT_DIR"
+
+      - name: Create JVM 17 fix
+        run: |
+          cd "$PROJECT_DIR"
 
           cat > force-jvm.gradle <<'EOF'
           allprojects {
-              afterEvaluate {
-                  tasks.withType(JavaCompile).configureEach {
-                      sourceCompatibility = "17"
-                      targetCompatibility = "17"
-                  }
-
-                  tasks.configureEach {
-                      if (name.toLowerCase().contains("kotlinc")) {
-                          try {
-                              kotlinOptions.jvmTarget = "17"
-                          } catch (Exception ignored) {
-                          }
-                      }
-                  }
+              tasks.withType(JavaCompile).configureEach {
+                  options.release = 17
               }
           }
           EOF
 
-      - name: Find project
-        run: |
-          SETTINGS=$(find project -name settings.gradle -o -name settings.gradle.kts | head -n 1)
-
-          if [ -z "$SETTINGS" ]; then
-            echo "settings.gradle or settings.gradle.kts not found"
-            exit 1
-          fi
-
-          echo "SETTINGS=$SETTINGS"
-          echo "PROJECT_DIR=$(dirname "$SETTINGS")" >> "$GITHUB_ENV"
+          echo "Created force-jvm.gradle"
 
       - name: Build APK
         run: |
           cd "$PROJECT_DIR"
-          gradle --init-script ../force-jvm.gradle assembleDebug
+
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            ./gradlew assembleDebug --init-script force-jvm.gradle
+          else
+            gradle assembleDebug --init-script force-jvm.gradle
+          fi
+
+      - name: Find APK
+        run: |
+          find "$PROJECT_DIR" -type f -name "*.apk" -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: SHIT-MART-APK
-          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
+          path: |
+            ${{ env.PROJECT_DIR }}/**/build/outputs/apk/**/*.apk
+            ${{ env.PROJECT_DIR }}/**/build/outputs/apk/*.apk
+          if-no-files-found: error
