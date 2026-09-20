@@ -22,6 +22,19 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+          - name: Fix JVM target
+          run: |
+            cd project
+            find . \( -name 
+            "build.gradle" -o -name 
+            "build.gradle.kts" \) -print0 | xargs 
+            -0 sed -i \
+              -e 's/
+              JavaVersion.VERSION_1_8/
+              JavaVersion.VERSION_17/g' \
+              -e 's/jvmTarget *= 
+              *["'\'']1.8["'\'']/jvmTarget = "17"/
+              g'
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
